@@ -6,6 +6,7 @@ import os
 
 from typing import Dict, Tuple
 
+pwd = os.path.join(os.getenv('PWD'), 'traffic_assignment')
 
 # Function to import OMX matrices
 def import_matrix(matfile):
@@ -38,7 +39,7 @@ def import_matrix(matfile):
     myfile.close()
 
 
-def create_network_df(network_name="SiouxFalls", root='/home/polina/kans/TransportationNetworks'):
+def create_network_df(network_name="SiouxFalls", root=os.path.join(pwd, 'TransportationNetworks')):
 
     # Importing the networks into a Pandas dataframe consists of a single line of code
     # but we can also make sure all headers are lower case and without trailing spaces
