@@ -6,5 +6,5 @@ spbu diploma project
 ```bash
 git clone https://github.com/polinapodozerova/traffic_assignment
 git clone https://github.com/bstabler/TransportationNetworks.git
-cd traffic-gcnn-project
+cd traffic_assignment
 pip install -r requirements.txt

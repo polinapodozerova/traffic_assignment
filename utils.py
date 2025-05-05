@@ -2,6 +2,7 @@ import osmnx as ox
 import openmatrix as omx
 import numpy as np
 import pandas as pd
+import pickle
 import os
 
 from typing import Dict, Tuple
@@ -118,6 +119,33 @@ def generate_od_matrices(base_matrix, num_matrices, condition='uncogested'):
 
     return matrices
 
+
+def load_paired_data(path="data/sioux/uncongested"):
+    directory = os.path.join(pwd, path)
+    all_inputs = []
+    all_outputs = []
+    all_metadata = []
+
+    for filename in sorted(os.listdir(directory)):
+        if filename.endswith(".pkl"):
+            filepath = os.path.join(directory, filename)
+            
+            with open(filepath, 'rb') as f:
+                data_pair = pickle.load(f)
+                
+                all_inputs.append(data_pair['input'])
+                all_outputs.append(data_pair['output'])
+                all_metadata.append(data_pair.get('metadata', None))
+
+    input_matrices = np.array(all_inputs)
+    output_matrices = np.array(all_outputs)
+
+    print(f"Loaded {len(all_inputs)} samples from {path}")
+    print(f"Input shape: {input_matrices.shape}")
+    print(f"Output shape: {output_matrices.shape}")
+
+    return input_matrices, output_matrices
+    
 
 class SaintPetersburgDatasetGenerator:
     def __init__(self, max_nodes: int = 100, seed: int = 40):
