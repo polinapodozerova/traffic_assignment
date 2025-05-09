@@ -6,7 +6,6 @@ import os
 
 from typing import Dict, Tuple
 
-
 # Function to import OMX matrices
 def import_matrix(matfile):
     f = open(matfile, 'r')
@@ -38,8 +37,7 @@ def import_matrix(matfile):
     myfile.close()
 
 
-def create_network_df(network_name="SiouxFalls", root='/home/polina/kans/TransportationNetworks'):
-
+def create_network_df(network_name="SiouxFalls", root='/home/polina/kans/traffic_assignment/TransportationNetworks'):
     # Importing the networks into a Pandas dataframe consists of a single line of code
     # but we can also make sure all headers are lower case and without trailing spaces
 
@@ -79,42 +77,53 @@ def prepare_network_data(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         j = node_index[row['term_node']]
         T_0[i, j] = row['free_flow_time']
         C[i, j] = row['capacity']
-    
-    
+
     return T_0, C
 
 
 def generate_od_matrices(base_matrix, num_matrices, condition='uncogested'):
-    """
-    Generate multiple OD demand matrices by multiplying base matrix with random factors
-
-    Parameters:
-    base_matrix (np.array): The base OD demand matrix
-    num_matrices (int): Number of matrices to generate
-    condition (str): 'uncongested', 'moderate', or 'congested'
-
-    Returns:
-    list: List of generated OD matrices
-    """
     matrices = []
-
     for _ in range(num_matrices):
-        if condition == 'uncongested':
-            # Flow-capacity ratio < 0.5 - use lower random factors
-            random_factors = np.random.uniform(0.1, 0.5, size=base_matrix.shape)
-        elif condition == 'moderate':
-            # Flow-capacity ratio between 0.4-0.8 - use medium random factors
-            random_factors = np.random.uniform(0.4, 0.8, size=base_matrix.shape)
-        elif condition == 'congested':
-            # Flow-capacity ratio > 1.0 - use higher random factors
-            random_factors = np.random.uniform(0.8, 1.5, size=base_matrix.shape)
-        else:
-            raise ValueError("Invalid condition. Use 'uncongested', 'moderate', or 'congested'")
+        random_factors = np.random.uniform(0.5, 1.5, size=base_matrix.shape)
+        # if condition == 'uncongested':
+        #     # Flow-capacity ratio < 0.5 - use lower random factors
+        #     random_factors = np.random.uniform(0.1, 0.5, size=base_matrix.shape)
+        # elif condition == 'moderate':
+        #     # Flow-capacity ratio between 0.4-0.8 - use medium random factors
+        #     random_factors = np.random.uniform(0.4, 0.8, size=base_matrix.shape)
+        # elif condition == 'congested':
+        #     # Flow-capacity ratio > 1.0 - use higher random factors
+        #     random_factors = np.random.uniform(0.8, 1.5, size=base_matrix.shape)
+        # else:
+        #     raise ValueError("Invalid condition. Use 'uncongested', 'moderate', or 'congested'")
 
         new_matrix = base_matrix * random_factors
         new_matrix = new_matrix.astype(int)
         matrices.append(new_matrix)
 
+    return matrices
+
+import numpy as np
+
+def generate_capacity_matrices(base_capacities, num_matrices, disruption_level='L'):
+    matrices = []
+    
+    for _ in range(num_matrices):
+        if disruption_level == 'L':
+            # Light disruption: 20% max reduction
+            scaling_factors = np.random.uniform(0.8, 1.0, size=base_capacities.shape)
+        elif disruption_level == 'M':
+            # Moderate disruption: 50% max reduction
+            scaling_factors = np.random.uniform(0.5, 1.0, size=base_capacities.shape)
+        elif disruption_level == 'H':
+            # High disruption: 80% max reduction
+            scaling_factors = np.random.uniform(0.2, 1.0, size=base_capacities.shape)
+        else:
+            raise ValueError("Invalid disruption level. Use 'L', 'M', or 'H'")
+        
+        new_matrix = base_capacities * scaling_factors
+        matrices.append(new_matrix)
+    
     return matrices
 
 
