@@ -248,3 +248,18 @@ class SaintPetersburgDatasetGenerator:
             print(f"Generated dataset for {area_name} with {num_nodes} nodes.")
 
         return datasets
+
+def vect_to_matrix_flows(adj, flows):
+    if not isinstance(adj, np.ndarray) or adj.ndim != 2:
+        raise ValueError("adj must be a 2D numpy array")
+    if not isinstance(flows, np.ndarray) or flows.ndim != 1:
+        raise ValueError("flows must be a 1D numpy array")
+    
+    nnz = np.count_nonzero(adj)
+    if len(flows) != nnz:
+        raise ValueError(f"Length of flows ({len(flows)}) must match the number of non-zero elements in adj ({nnz})")
+    
+    flow_matrix = np.zeros_like(adj, dtype=flows.dtype)
+    flow_matrix[adj != 0] = flows
+    
+    return flow_matrix
