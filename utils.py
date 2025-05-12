@@ -7,9 +7,49 @@ import os
 
 from typing import Dict, Tuple
 
-pwd = os.path.join(os.getenv('PWD'), 'traffic_assignment')
+pwd = os.getcwd()
 
-# Function to import OMX matrices
+def load_inp_outp(directory):
+    inputs = []
+    outputs = []
+    metadata = []
+    for filename in sorted(os.listdir(directory)):
+        if filename.endswith(".pkl"):
+            filepath = os.path.join(directory, filename)
+            
+            with open(filepath, 'rb') as f:
+                data_pair = pickle.load(f)
+                
+                inputs.append(data_pair['input'])
+                outputs.append(data_pair['output'])
+                metadata.append(data_pair.get('metadata', None))
+
+    input_matrices = np.array(inputs)  # [num_samples, num_nodes, num_nodes]
+    output_matrices = np.array(outputs)  # [num_samples, num_nodes, num_nodes]
+    return input_matrices, output_matrices
+
+def load_inp_outp_cap(directory):
+    inputs = []
+    outputs = []
+    capacities = []
+    metadata = []
+    for filename in sorted(os.listdir(directory)):
+        if filename.endswith(".pkl"):
+            filepath = os.path.join(directory, filename)
+            
+            with open(filepath, 'rb') as f:
+                data_pair = pickle.load(f)
+                
+                inputs.append(data_pair['input'])
+                outputs.append(data_pair['output'])
+                capacities.append(data_pair['capacity'])
+                metadata.append(data_pair.get('metadata', None))
+
+    input_matrices = np.array(inputs)  # [num_samples, num_nodes, num_nodes]
+    output_matrices = np.array(outputs)  # [num_samples, num_nodes, num_nodes]
+    capacities = np.array(capacities)
+    return input_matrices, capacities, output_matrices
+
 def import_matrix(matfile):
     f = open(matfile, 'r')
     all_rows = f.read()
@@ -29,7 +69,6 @@ def import_matrix(matfile):
     mat = np.zeros((zones, zones))
     for i in range(zones):
         for j in range(zones):
-            # We map values to a index i-1, as Numpy is base 0
             mat[i, j] = matrix.get(i + 1, {}).get(j + 1, 0)
 
     index = np.arange(zones) + 1
@@ -85,33 +124,19 @@ def prepare_network_data(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
     return T_0, C
 
 
-def generate_od_matrices(base_matrix, num_matrices, condition='uncogested'):
+def generate_od_matrices(base_matrix, num_matrices):
     matrices = []
     for _ in range(num_matrices):
         random_factors = np.random.uniform(0.5, 1.5, size=base_matrix.shape)
-        # if condition == 'uncongested':
-        #     # Flow-capacity ratio < 0.5 - use lower random factors
-        #     random_factors = np.random.uniform(0.1, 0.5, size=base_matrix.shape)
-        # elif condition == 'moderate':
-        #     # Flow-capacity ratio between 0.4-0.8 - use medium random factors
-        #     random_factors = np.random.uniform(0.4, 0.8, size=base_matrix.shape)
-        # elif condition == 'congested':
-        #     # Flow-capacity ratio > 1.0 - use higher random factors
-        #     random_factors = np.random.uniform(0.8, 1.5, size=base_matrix.shape)
-        # else:
-        #     raise ValueError("Invalid condition. Use 'uncongested', 'moderate', or 'congested'")
-
         new_matrix = base_matrix * random_factors
         new_matrix = new_matrix.astype(int)
         matrices.append(new_matrix)
-
-    return matrices
+    return np.array(matrices)
 
 import numpy as np
 
 def generate_capacity_matrices(base_capacities, num_matrices, disruption_level='L'):
     matrices = []
-    
     for _ in range(num_matrices):
         if disruption_level == 'L':
             # Light disruption: 20% max reduction
@@ -128,7 +153,7 @@ def generate_capacity_matrices(base_capacities, num_matrices, disruption_level='
         new_matrix = base_capacities * scaling_factors
         matrices.append(new_matrix)
     
-    return matrices
+    return np.array(matrices)
 
 
 def load_paired_data(path="data/sioux/uncongested"):
