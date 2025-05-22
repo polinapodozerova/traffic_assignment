@@ -1,187 +1,147 @@
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import osmnx as ox
 import openmatrix as omx
 import numpy as np
 import pandas as pd
 import pickle
 import os
-
 from typing import Dict, Tuple
 
 pwd = os.getcwd()
 
-def load_inp_outp(directory):
-    inputs = []
-    outputs = []
-    metadata = []
+def load_inp_outp(directory: str) -> Tuple[np.ndarray, np.ndarray]:
+    inputs, outputs = [], []
     for filename in sorted(os.listdir(directory)):
         if filename.endswith(".pkl"):
-            filepath = os.path.join(directory, filename)
-            
-            with open(filepath, 'rb') as f:
-                data_pair = pickle.load(f)
-                
-                inputs.append(data_pair['input'])
-                outputs.append(data_pair['output'])
-                metadata.append(data_pair.get('metadata', None))
+            with open(os.path.join(directory, filename), 'rb') as f:
+                data = pickle.load(f)
+                inputs.append(data['input'])
+                outputs.append(data['output'])
+    return np.array(inputs), np.array(outputs)
 
-    input_matrices = np.array(inputs)  # [num_samples, num_nodes, num_nodes]
-    output_matrices = np.array(outputs)  # [num_samples, num_nodes, num_nodes]
-    return input_matrices, output_matrices
-
-def load_inp_outp_cap(directory):
-    inputs = []
-    outputs = []
-    capacities = []
-    metadata = []
+def load_inp_outp_cap(directory: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    inputs, outputs, capacities = [], [], []
     for filename in sorted(os.listdir(directory)):
         if filename.endswith(".pkl"):
-            filepath = os.path.join(directory, filename)
-            
-            with open(filepath, 'rb') as f:
-                data_pair = pickle.load(f)
-                
-                inputs.append(data_pair['input'])
-                outputs.append(data_pair['output'])
-                capacities.append(data_pair['capacity'])
-                metadata.append(data_pair.get('metadata', None))
+            with open(os.path.join(directory, filename), 'rb') as f:
+                data = pickle.load(f)
+                inputs.append(data['input'])
+                outputs.append(data['output'])
+                capacities.append(data['capacity'])
+    return np.array(inputs), np.array(capacities), np.array(outputs)
 
-    input_matrices = np.array(inputs)  # [num_samples, num_nodes, num_nodes]
-    output_matrices = np.array(outputs)  # [num_samples, num_nodes, num_nodes]
-    capacities = np.array(capacities)
-    return input_matrices, capacities, output_matrices
-
-def import_matrix(matfile):
-    f = open(matfile, 'r')
-    all_rows = f.read()
-    blocks = all_rows.split('Origin')[1:]
+def import_matrix(matfile: str) -> None:
+    with open(matfile, 'r') as f:
+        blocks = f.read().split('Origin')[1:]
+    
     matrix = {}
-    for k in range(len(blocks)):
-        orig = blocks[k].split('\n')
-        dests = orig[1:]
-        orig = int(orig[0])
-
-        d = [eval('{'+a.replace(';', ',').replace(' ', '') + '}') for a in dests]
+    for block in blocks:
+        lines = block.split('\n')
+        orig = int(lines[0])
         destinations = {}
-        for i in d:
-            destinations = {**destinations, **i}
+        for line in lines[1:]:
+            if line:
+                dest = eval('{'+line.replace(';',',').replace(' ','')+'}')
+                destinations.update(dest)
         matrix[orig] = destinations
+    
     zones = max(matrix.keys())
     mat = np.zeros((zones, zones))
     for i in range(zones):
         for j in range(zones):
-            mat[i, j] = matrix.get(i + 1, {}).get(j + 1, 0)
-
-    index = np.arange(zones) + 1
-
-    myfile = omx.open_file('demand.omx', 'w')
-    myfile['matrix'] = mat
-    myfile.create_mapping('taz', index)
-    myfile.close()
-
-
-def create_network_df(network_name="SiouxFalls", root=os.path.join(pwd, 'TransportationNetworks')):
-
-    # Importing the networks into a Pandas dataframe consists of a single line of code
-    # but we can also make sure all headers are lower case and without trailing spaces
-
-    netfile = os.path.join(root, network_name, network_name + '_net.tntp')
-    net = pd.read_csv(netfile, skiprows=8, sep='\t')
-
-    trimmed = [s.strip().lower() for s in net.columns]
-    net.columns = trimmed
-
-    # And drop the silly first andlast columns
-    net.drop(['~', ';'], axis=1, inplace=True)
+            mat[i,j] = matrix.get(i+1,{}).get(j+1,0)
     
-    return net
+    with omx.open_file('demand.omx', 'w') as myfile:
+        myfile['matrix'] = mat
+        myfile.create_mapping('taz', np.arange(zones)+1)
+
+def safe_mape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    mask = np.abs(y_true) > 1e-5
+    return np.mean(np.abs((y_true[mask]-y_pred[mask])/y_true[mask])) if mask.any() else 0.0
+
+def evaluate_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    metrics = {'MSE': [], 'MAE': [], 'R2': [], 'MAPE': []}
+    for sample in range(y_true.shape[0]):
+        mask = y_true[sample] != 0
+        if not mask.any():
+            continue
+            
+        y_t = y_true[sample][mask]
+        y_p = y_pred[sample][mask]
+        
+        metrics['MSE'].append(mean_squared_error(y_t, y_p))
+        metrics['MAE'].append(mean_absolute_error(y_t, y_p))
+        metrics['R2'].append(r2_score(y_t, y_p))
+        metrics['MAPE'].append(safe_mape(y_true[sample], y_pred[sample]))
+    
+    return {
+        'MSE': np.mean(metrics['MSE']) if metrics['MSE'] else np.nan,
+        'RMSE': np.sqrt(np.mean(metrics['MSE'])) if metrics['MSE'] else np.nan,
+        'MAE': np.mean(metrics['MAE']) if metrics['MAE'] else np.nan,
+        'R2': np.mean(metrics['R2']) if metrics['R2'] else np.nan,
+        'MAPE': np.mean([m for m in metrics['MAPE'] if abs(m) < 1]),
+        'MedianAE': np.median(metrics['MAE']) if metrics['MAE'] else np.nan
+    }
+
+def create_network_df(network_name: str = "SiouxFalls", 
+                     root: str = os.path.join(pwd, 'TransportationNetworks')) -> pd.DataFrame:
+    net = pd.read_csv(
+        os.path.join(root, network_name, f"{network_name}_net.tntp"),
+        skiprows=8, 
+        sep='\t'
+    )
+    net.columns = [s.strip().lower() for s in net.columns]
+    return net.drop(['~', ';'], axis=1)
 
 def prepare_network_data(df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Подготавливает данные сети из DataFrame в матричную форму.
-    
-    Args:
-        df: DataFrame с колонками init_node, term_node, capacity, free_flow_time
-        
-    Returns:
-        Кортеж (T_0, C, D), где:
-        T_0 - матрица начальных времен проезда
-        C - матрица пропускных способностей
-        D - матрица спроса (пока нулевая, нужно заполнить отдельно)
-    """
     nodes = sorted(set(df['init_node']).union(set(df['term_node'])))
-    n = len(nodes)
-    node_index = {node: idx for idx, node in enumerate(nodes)}
+    node_index = {n:i for i,n in enumerate(nodes)}
     
-    T_0 = np.zeros((n, n))
-    C = np.zeros((n, n))
+    T_0 = np.zeros((len(nodes), len(nodes)))
+    C = np.zeros_like(T_0)
     
     for _, row in df.iterrows():
-        i = node_index[row['init_node']]
-        j = node_index[row['term_node']]
-        T_0[i, j] = row['free_flow_time']
-        C[i, j] = row['capacity']
-
+        i, j = node_index[row['init_node']], node_index[row['term_node']]
+        T_0[i,j] = row['free_flow_time']
+        C[i,j] = row['capacity']
     return T_0, C
 
+def generate_od_matrices(base_matrix: np.ndarray, num_matrices: int) -> np.ndarray:
+    return np.array([
+        (base_matrix * np.random.uniform(0.5, 1.5, base_matrix.shape)).astype(int)
+        for _ in range(num_matrices)
+    ])
 
-def generate_od_matrices(base_matrix, num_matrices):
-    matrices = []
-    for _ in range(num_matrices):
-        random_factors = np.random.uniform(0.5, 1.5, size=base_matrix.shape)
-        new_matrix = base_matrix * random_factors
-        new_matrix = new_matrix.astype(int)
-        matrices.append(new_matrix)
-    return np.array(matrices)
+def generate_capacity_matrices(base_capacities: np.ndarray, 
+                             num_matrices: int,
+                             disruption_level: str = 'L') -> np.ndarray:
+    ranges = {
+        'L': (0.8, 1.0),
+        'M': (0.5, 1.0),
+        'H': (0.2, 1.0)
+    }
+    low, high = ranges.get(disruption_level, (1.0, 1.0))
+    return np.array([
+        base_capacities * np.random.uniform(low, high, base_capacities.shape)
+        for _ in range(num_matrices)
+    ])
 
-import numpy as np
-
-def generate_capacity_matrices(base_capacities, num_matrices, disruption_level='L'):
-    matrices = []
-    for _ in range(num_matrices):
-        if disruption_level == 'L':
-            # Light disruption: 20% max reduction
-            scaling_factors = np.random.uniform(0.8, 1.0, size=base_capacities.shape)
-        elif disruption_level == 'M':
-            # Moderate disruption: 50% max reduction
-            scaling_factors = np.random.uniform(0.5, 1.0, size=base_capacities.shape)
-        elif disruption_level == 'H':
-            # High disruption: 80% max reduction
-            scaling_factors = np.random.uniform(0.2, 1.0, size=base_capacities.shape)
-        else:
-            raise ValueError("Invalid disruption level. Use 'L', 'M', or 'H'")
-        
-        new_matrix = base_capacities * scaling_factors
-        matrices.append(new_matrix)
-    
-    return np.array(matrices)
-
-
-def load_paired_data(path="data/sioux/uncongested"):
+def load_paired_data(path: str = "data/sioux/uncongested") -> Tuple[np.ndarray, np.ndarray]:
     directory = os.path.join(pwd, path)
-    all_inputs = []
-    all_outputs = []
-    all_metadata = []
-
+    inputs, outputs = [], []
+    
     for filename in sorted(os.listdir(directory)):
         if filename.endswith(".pkl"):
-            filepath = os.path.join(directory, filename)
-            
-            with open(filepath, 'rb') as f:
-                data_pair = pickle.load(f)
-                
-                all_inputs.append(data_pair['input'])
-                all_outputs.append(data_pair['output'])
-                all_metadata.append(data_pair.get('metadata', None))
-
-    input_matrices = np.array(all_inputs)
-    output_matrices = np.array(all_outputs)
-
-    print(f"Loaded {len(all_inputs)} samples from {path}")
-    print(f"Input shape: {input_matrices.shape}")
-    print(f"Output shape: {output_matrices.shape}")
-
-    return input_matrices, output_matrices
+            with open(os.path.join(directory, filename), 'rb') as f:
+                data = pickle.load(f)
+                inputs.append(data['input'])
+                outputs.append(data['output'])
     
+    input_mat = np.array(inputs)
+    output_mat = np.array(outputs)
+    print(f"Loaded {len(inputs)} samples\nInput shape: {input_mat.shape}\nOutput shape: {output_mat.shape}")
+    return input_mat, output_mat
+
 
 class SaintPetersburgDatasetGenerator:
     def __init__(self, max_nodes: int = 100, seed: int = 40):
