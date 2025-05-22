@@ -5,8 +5,6 @@ from typing import Tuple
 
 def leblanc_algorithm(T_0: np.ndarray, D: np.ndarray, C: np.ndarray, epsilon: float) -> Tuple[np.ndarray, int]:
     """
-    Реализация алгоритма Леблана для расчета потоков в транспортной сети.
-
     Args:
         T_0: Начальная матрица затрат
         D: Матрица спроса
@@ -31,7 +29,7 @@ def leblanc_algorithm(T_0: np.ndarray, D: np.ndarray, C: np.ndarray, epsilon: fl
         new_graph = nx.from_numpy_array(T, create_using=nx.DiGraph)
         Y = get_flow_matrix(new_graph, n, D)
 
-        # Шаг 3: Поиск оптимального шага (lambda)
+        # Шаг 3: Поиск оптимального lambda
         C_inv_4 = 1 / C**4
         np.nan_to_num(C_inv_4, copy=False, posinf=0.0, neginf=0.0)
 
