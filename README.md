@@ -1,4 +1,4 @@
-# Traffic Assignment with Graph Convolutional Neural Networks
+# Traffic Assignment Task
 
 spbu diploma project 
 
